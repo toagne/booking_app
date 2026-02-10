@@ -1,4 +1,4 @@
-package middleware
+package auth
 
 import (
 	"log"
@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -39,4 +40,14 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Set("userId", userID)
 		c.Next()
 	}
+}
+
+func GenerateToken(userId int) (string, error) {
+	claims := jwt.RegisteredClaims {
+		ExpiresAt:	jwt.NewNumericDate(time.Now().Add(time.Hour * 3)),
+		IssuedAt:	jwt.NewNumericDate(time.Now()),
+		Subject:	strconv.Itoa(userId),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 }

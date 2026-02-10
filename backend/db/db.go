@@ -10,39 +10,24 @@ import (
 	"fmt"
 	"encoding/json"
 	"strings"
+	"github.com/toagne/booking_app/types"
 )
 
-var db *sql.DB
-
-type Match struct {
-	Round	string	`json:"round"`
-	Date	string	`json:"date"`
-	Time	string	`json:"time"`
-	Team1	string	`json:"team1"`
-	Team2	string	`json:"team2"`
+type DbRepo struct {
+	db *sql.DB
 }
 
-type User struct {
-	Id				int		`json:"id"`
-	Username		string	`json:"username"`
-	HashedPassword	string	`json:"password"`
+func NewDbRepo(db *sql.DB) *DbRepo {
+	return &DbRepo{db: db}
 }
 
-type Booking struct {
-	Id			int		`json:"id"`
-	UserId		int		`json:"user_id"`
-	Username	string	`json:"username"`
-	Match		Match	`json:"match"`
-	Tickets		int		`json:"n_of_tickets"`
-}
-
-func getTeamId(name string) (int, error) {
+func getTeamId(db *sql.DB, name string) (int, error) {
 	var id int
 	err := db.QueryRow(`SELECT id FROM teams WHERE name = ?`, name).Scan(&id)
 	return id, err
 }
 
-func createTeamsTable(data struct{Matches []Match}) {
+func createTeamsTable(db *sql.DB, data struct{Matches []types.Match}) {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS teams (
 			id INT AUTO_INCREMENT NOT NULL,
@@ -70,7 +55,7 @@ func createTeamsTable(data struct{Matches []Match}) {
 	}
 }
 
-func createMatchesTable(data struct{Matches []Match}) {
+func createMatchesTable(db *sql.DB, data struct{Matches []types.Match}) {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS matches (
 			id INT AUTO_INCREMENT NOT NULL,
@@ -89,11 +74,11 @@ func createMatchesTable(data struct{Matches []Match}) {
 	}
 
 	for _, match := range data.Matches {
-		id1, err := getTeamId(match.Team1)
+		id1, err := getTeamId(db, match.Team1)
 		if err != nil {
 			log.Fatalf("team1 not found: %v", err)
 		}
-		id2, err := getTeamId(match.Team2)
+		id2, err := getTeamId(db, match.Team2)
 		if err != nil {
 			log.Fatalf("team2 not found: %v", err)
 		}
@@ -110,7 +95,7 @@ func createMatchesTable(data struct{Matches []Match}) {
 	}
 }
 
-func createUsersTable() {
+func createUsersTable(db *sql.DB) {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
 			id INT AUTO_INCREMENT NOT NULL,
@@ -124,7 +109,7 @@ func createUsersTable() {
 	}
 }
 
-func createBookingsTable() {
+func createBookingsTable(db *sql.DB) {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS bookings (
 			id INT AUTO_INCREMENT NOT NULL,
@@ -138,7 +123,7 @@ func createBookingsTable() {
 	}
 }
 
-func createTables() {
+func createTables(db *sql.DB) {
 	resp, err := http.Get("https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/it.1.json")
 	if err != nil {
 		log.Fatalf("Error fetching URL: %v", err)
@@ -146,20 +131,20 @@ func createTables() {
 	defer resp.Body.Close()
 
 	var data struct {
-		Matches []Match
+		Matches []types.Match
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		log.Fatalf("Error decoding JSON: %v", err)
 	}
 
-	createTeamsTable(data)
-	createMatchesTable(data)
-	createUsersTable()
-	createBookingsTable()
+	createTeamsTable(db, data)
+	createMatchesTable(db, data)
+	createUsersTable(db)
+	createBookingsTable(db)
 }
 
-func InitDb() {
+func InitDb() (*sql.DB) {
 	cfg := mysql.NewConfig()
 	cfg.User = os.Getenv("DB_USER")
 	cfg.Passwd = os.Getenv("DB_PASSWORD")
@@ -167,8 +152,7 @@ func InitDb() {
 	cfg.Addr = "db"
 	cfg.DBName = "booking_db"
 
-	var err error
-	db, err = sql.Open("mysql", cfg.FormatDSN())
+	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -181,11 +165,13 @@ func InitDb() {
 	}
 	fmt.Println("Database Connected!")
 
-	createTables()
+	createTables(db)
+
+	return db
 }
 
-func GetMatchesByMatchday(matchday string) ([]Match, error) {
-	rows, err := db.Query(`
+func (r *DbRepo) GetMatchesByMatchday(matchday string) (*[]types.Match, error) {
+	rows, err := r.db.Query(`
 		SELECT date, time, team1, team2
 		FROM matches
 		WHERE round = ?
@@ -195,10 +181,10 @@ func GetMatchesByMatchday(matchday string) ([]Match, error) {
 	}
 	defer rows.Close()
 
-	var matches []Match
+	var matches []types.Match
 
 	for rows.Next() {
-		var m Match
+		var m types.Match
 		if err := rows.Scan(
 			&m.Date,
 			&m.Time,
@@ -210,11 +196,11 @@ func GetMatchesByMatchday(matchday string) ([]Match, error) {
 		matches = append(matches, m)
 	}
 
-	return matches, rows.Err()
+	return &matches, rows.Err()
 }
 
-func GetMatchesByTeam(teamId int) ([]Match, error) {
-	rows, err := db.Query(`
+func (r *DbRepo) GetMatchesByTeam(teamId int) (*[]types.Match, error) {
+	rows, err := r.db.Query(`
 		SELECT round, date, time, team1, team2
 		FROM matches
 		WHERE team1_id LIKE ? OR team2_id like ?
@@ -224,10 +210,10 @@ func GetMatchesByTeam(teamId int) ([]Match, error) {
 	}
 	defer rows.Close()
 
-	var matches []Match
+	var matches []types.Match
 
 	for rows.Next() {
-		var m Match
+		var m types.Match
 		if err := rows.Scan(
 			&m.Round,
 			&m.Date,
@@ -240,25 +226,25 @@ func GetMatchesByTeam(teamId int) ([]Match, error) {
 		matches = append(matches, m)
 	}
 
-	return matches, rows.Err()
+	return &matches, rows.Err()
 }
 
-func GetMatchByMatchId(MatchId int) (Match, error) {
-	rows, err := db.Query(`
+func (r *DbRepo) GetMatchByMatchId(MatchId int) (*types.Match, error) {
+	rows, err := r.db.Query(`
 		SELECT round, date, time, team1, team2
 		FROM matches
 		WHERE id = ?
 	`, MatchId)
 	if err != nil {
-		return Match{}, err
+		return &types.Match{}, err
 	}
 	defer rows.Close()
 
 	if !rows.Next() {
-		return Match{}, sql.ErrNoRows
+		return &types.Match{}, sql.ErrNoRows
 	}
 
-	var m Match
+	var m types.Match
 	if err := rows.Scan(
 		&m.Round,
 		&m.Date,
@@ -266,14 +252,14 @@ func GetMatchByMatchId(MatchId int) (Match, error) {
 		&m.Team1,
 		&m.Team2,
 	); err != nil {
-		return Match{}, err
+		return &types.Match{}, err
 	}
 
-	return m, rows.Err()
+	return &m, rows.Err()
 }
 
-func AddUser(username string, password string) error {
-	if _, err := db.Exec(`
+func (r *DbRepo) AddUser(username string, password string) error {
+	if _, err := r.db.Exec(`
 		INSERT INTO users (username, password) VALUES (?, ?)
 	`, username, password); err != nil {
 		if !strings.Contains(err.Error(), "Duplicate entry") {
@@ -284,9 +270,9 @@ func AddUser(username string, password string) error {
 	return nil
 }
 
-func GetUserByEmail(email string) (User, error) {
-	var user User
-	err := db.QueryRow(`SELECT * FROM users WHERE username=?`, email).Scan(
+func (r *DbRepo) GetUserByEmail(email string) (*types.User, error) {
+	var user types.User
+	err := r.db.QueryRow(`SELECT * FROM users WHERE username=?`, email).Scan(
 		&user.Id,
 		&user.Username,
 		&user.HashedPassword,
@@ -299,11 +285,11 @@ func GetUserByEmail(email string) (User, error) {
 	default:
 		log.Printf("username %v in database\n", email)
 	}
-	return user, nil
+	return &user, nil
 }
 
-func AddBooking(userId int, matchId int, nOfTickets int) (int, error) {
-	res, err := db.Exec(`
+func (r * DbRepo) AddBooking(userId int, matchId int, nOfTickets int) (int, error) {
+	res, err := r.db.Exec(`
 		INSERT INTO bookings (user_id, match_id, n_of_tickets)
 		VALUES (?, ?, ?)
 	`, userId, matchId, nOfTickets)
@@ -320,9 +306,9 @@ func AddBooking(userId int, matchId int, nOfTickets int) (int, error) {
 	return int(bookingId), nil
 }
 
-func GetBookingInfo(bookingId int) (*Booking, error) {
-	var booking Booking
-	err := db.QueryRow(`
+func (r *DbRepo) GetBookingInfo(bookingId int) (*types.Booking, error) {
+	var booking types.Booking
+	err := r.db.QueryRow(`
 	SELECT bookings.id,
 			bookings.user_id,
 			users.username,

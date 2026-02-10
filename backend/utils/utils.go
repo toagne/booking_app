@@ -2,43 +2,13 @@ package utils
 
 import (
 	"log"
-	"os"
-	"strconv"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/toagne/booking_app/types"
 )
 
-type Email struct {
-	To		string
-	Subject	string
-	Body	string
-}
+var EmailQueue = make(chan types.Email, 10)
 
-var EmailQueue = make(chan Email, 10)
-
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
-}
-
-func VerifyPassword(password string, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
-
-func GenerateToken(userId int) (string, error) {
-	claims := jwt.RegisteredClaims {
-		ExpiresAt:	jwt.NewNumericDate(time.Now().Add(time.Hour * 3)),
-		IssuedAt:	jwt.NewNumericDate(time.Now()),
-		Subject:	strconv.Itoa(userId),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
-}
-
-func sendEmail(email Email) {
+func sendEmail(email types.Email) {
 	time.Sleep(5 * time.Second)
 	log.Printf("\n\n####SENDING NEW EMAIL####\n\nTo: %v\n\nSubject: %v\n\n%v\n\n#########################",
 		email.To, email.Subject, email.Body,
