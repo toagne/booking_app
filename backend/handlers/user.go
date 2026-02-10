@@ -3,7 +3,6 @@ package handlers
 import (
 	"github.com/toagne/booking_app/db"
 	"github.com/toagne/booking_app/utils"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -53,11 +52,13 @@ func Signup(c *gin.Context) {
 	}
 	if err := c.BindJSON(&req); err != nil{
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	
 	hash, err := utils.HashPassword(req.Password)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not hash password"})
+		return
 	}
 
 	if err := db.AddUser(req.Email, hash); err != nil {
@@ -74,6 +75,7 @@ func Login(c *gin.Context) {
 	}
 	if err := c.BindJSON(&req); err != nil{
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	user, err := db.GetUserByEmail(req.Email)
@@ -82,8 +84,6 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	log.Printf("username after GetUserByEmail in Login: %v\n", user.Username)
-	log.Printf("hashed password after GetUserByEmail in Login: %v\n", user.HashedPassword)
 	if !utils.VerifyPassword(req.Password, user.HashedPassword) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid password"})
 		return
