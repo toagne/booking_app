@@ -17,7 +17,8 @@ func NewHandler(repo types.MatchRepo) *Handler {
 func (h *Handler) GetMatchByMatchId(c *gin.Context) {
 	matchId, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
 	}
 	match, err := h.matchRepo.GetMatchByMatchId(matchId)
 	if err != nil {
@@ -30,7 +31,8 @@ func (h *Handler) GetMatchByMatchId(c *gin.Context) {
 func (h *Handler) GetMatchesByTeam(c *gin.Context) {
 	teamId, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
 	}
 	matches, err := h.matchRepo.GetMatchesByTeam(teamId)
 	if err != nil {
